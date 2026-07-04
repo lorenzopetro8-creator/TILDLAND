@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Tildland</title>
+<style>
+*{box-sizing:border-box} body{margin:0;min-height:100vh;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#fff;background:#071126;overflow-x:hidden}body:before{content:"";position:fixed;inset:0;background:linear-gradient(rgba(5,12,30,.55),rgba(5,12,30,.82)),url('assets/bg.jpg');background-size:cover;background-position:center;z-index:-2}body:after{content:"";position:fixed;inset:0;background:radial-gradient(circle at top,#3c6bff44,transparent 35%),radial-gradient(circle at bottom,#9b4dff33,transparent 40%);z-index:-1}.app{max-width:980px;margin:0 auto;padding:42px 18px 28px}.title{text-align:center;font-size:clamp(48px,10vw,86px);font-weight:900;line-height:1;margin:0 0 10px;text-shadow:0 8px 30px #000}.sub{text-align:center;font-size:clamp(20px,4vw,30px);font-weight:800;margin-bottom:28px}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}.deck{min-height:145px;border:3px solid var(--c);border-radius:28px;background:rgba(20,30,60,.72);box-shadow:0 0 25px color-mix(in srgb,var(--c),transparent 65%);padding:24px;display:flex;flex-direction:column;justify-content:center;gap:12px;cursor:pointer;backdrop-filter:blur(10px)}.dot{width:56px;height:56px;border-radius:50%;background:var(--c);box-shadow:0 0 18px var(--c)}.deck h2{font-size:clamp(25px,5vw,38px);line-height:1;margin:0}.deck p{margin:0;font-size:22px;font-weight:900;opacity:.9}.btn{border:0;border-radius:28px;padding:18px 26px;font-size:22px;font-weight:900;color:white;background:linear-gradient(135deg,#ff8a00,#ff5a00);box-shadow:0 12px 28px #0008;cursor:pointer}.btn.secondary{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25)}.screen{display:none}.screen.active{display:block}.topbar{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:18px}.bigDeck{text-align:center;padding:22px;border-radius:32px;background:rgba(6,12,35,.78);border:1px solid rgba(255,255,255,.18)}.bigDeck h1{font-size:42px;margin:6px 0}.cardWrap{display:flex;justify-content:center;margin:22px 0}.cardImg{max-width:min(92vw,520px);max-height:68vh;border-radius:24px;box-shadow:0 22px 50px #000c;border:4px solid var(--c)}.actions{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}.status{text-align:center;font-weight:800;opacity:.9;margin-top:12px}.small{text-align:center;opacity:.75;margin-top:22px;font-size:14px}.loading{text-align:center;font-weight:900;font-size:22px;margin:28px}.err{background:#ff333320;border:1px solid #ff6666;border-radius:18px;padding:14px;margin:18px 0}@media(max-width:650px){.app{padding-top:44px}.grid{gap:14px}.deck{min-height:132px;padding:20px;border-radius:24px}.dot{width:48px;height:48px}.cardImg{max-height:62vh}.actions{position:sticky;bottom:8px}.btn{font-size:20px;padding:16px 20px}}
+</style>
+</head>
+<body>
+<div class="app">
+<section id="home" class="screen active">
+  <h1 class="title">Tildland</h1>
+  <div class="sub">Scegli un mondo e pesca una carta</div>
+  <div id="loading" class="loading">Carico le carte...</div>
+  <div id="error" class="err" style="display:none"></div>
+  <div id="grid" class="grid"></div>
+  <div class="small">Versione 2.0 dinamica — legge automaticamente le immagini da GitHub</div>
+</section>
+<section id="play" class="screen">
+  <div class="topbar"><button class="btn secondary" onclick="goHome()">← Mondi</button><button class="btn secondary" onclick="reloadCards()">Aggiorna carte</button></div>
+  <div class="bigDeck" id="playBox"><h1 id="deckTitle"></h1><div id="deckCount" class="status"></div><button class="btn" onclick="drawCard()">Pesca carta</button><div class="cardWrap"><img id="cardImg" class="cardImg" style="display:none" /></div><div class="actions"><button class="btn" onclick="drawCard()">Pesca ancora</button><button class="btn secondary" onclick="goHome()">Torna ai mondi</button></div></div>
+</section>
+</div>
+<script>
+const REPO_OWNER='lorenzopetro8-creator';
+const REPO_NAME='TILDLAND';
+const BRANCH='main';
+const DECKS=[
+ {id:'rosso',name:'Processo',color:'#ff3030'},
+ {id:'giallo',name:'JackpoTami',color:'#ffd21a'},
+ {id:'arancione',name:'Tildiana Jones',color:'#ff8a00'},
+ {id:'viola',name:'Bonus/Malus',color:'#b02cff'},
+ {id:'blu',name:'Matozart',color:'#1e90ff'},
+ {id:'verde',name:'Jumati',color:'#14d83b'},
+ {id:'personaggi',name:'Estrai Pedina',color:'#f0f0f0'}
+];
+let decks={};let current=null;let pile=[];
+function rawUrl(path){return `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${BRANCH}/${path.split('/').map(encodeURIComponent).join('/')}`}
+async function loadCards(){
+ document.getElementById('loading').style.display='block';document.getElementById('error').style.display='none';
+ decks={};DECKS.forEach(d=>decks[d.id]=[]);
+ try{
+  const api=`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/git/trees/${BRANCH}?recursive=1&v=${Date.now()}`;
+  const r=await fetch(api,{cache:'no-store'}); if(!r.ok) throw new Error('GitHub API '+r.status);
+  const data=await r.json();
+  for(const item of data.tree||[]){
+    if(item.type!=='blob') continue;
+    const p=item.path;
+    const m=p.match(/^cards\/([^\/]+)\/(.+)$/i);
+    if(!m) continue;
+    const folder=m[1].toLowerCase();
+    if(!decks[folder]) continue;
+    if(!/\.(jpe?g|png|webp|gif)$/i.test(p)) continue;
+    decks[folder].push(rawUrl(p));
+  }
+  for(const id in decks){decks[id].sort(()=>Math.random()-.5)}
+  renderHome();
+ }catch(e){document.getElementById('error').style.display='block';document.getElementById('error').textContent='Errore caricamento carte. Controlla che il repository sia pubblico e che le immagini siano in cards/nomecartella. Dettaglio: '+e.message;}
+ document.getElementById('loading').style.display='none';
+}
+function renderHome(){const grid=document.getElementById('grid');grid.innerHTML='';DECKS.forEach(d=>{const n=(decks[d.id]||[]).length;const b=document.createElement('button');b.className='deck';b.style.setProperty('--c',d.color);b.onclick=()=>openDeck(d.id);b.innerHTML=`<div class="dot"></div><h2>${d.name}</h2><p>${n} carte</p>`;grid.appendChild(b);});}
+function openDeck(id){current=DECKS.find(d=>d.id===id);pile=[...(decks[id]||[])].sort(()=>Math.random()-.5);document.body.style.setProperty('--c',current.color);document.getElementById('deckTitle').textContent=current.name;document.getElementById('deckCount').textContent=`${pile.length} carte nel mazzo`;document.getElementById('cardImg').style.display='none';show('play');}
+function drawCard(){if(!current)return;if(!pile.length){pile=[...(decks[current.id]||[])].sort(()=>Math.random()-.5); if(!pile.length){alert('Questo mazzo non ha carte.');return;}}
+ const url=pile.pop();const img=document.getElementById('cardImg');img.src=url+'?v='+Date.now();img.style.display='block';document.getElementById('deckCount').textContent=`Restano ${pile.length} carte`;}
+function show(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');scrollTo(0,0)}
+function goHome(){show('home');renderHome()}
+function reloadCards(){loadCards();alert('Aggiorno le carte da GitHub. Attendi qualche secondo.');}
+loadCards();
+</script>
+</body>
+</html>
